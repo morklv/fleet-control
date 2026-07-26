@@ -3,6 +3,37 @@
 A multi-robot warehouse simulation built with Python, FastAPI, React, and
 TypeScript.
 
+![3D warehouse fleet](docs/fleet-control-3d.png)
+
+## Key engineering work
+
+- **Path and traffic planning:** A* finds obstacle-aware routes. Cell and edge
+  reservations prevent collisions; priority, yielding, and replanning resolve
+  shared-path conflicts.
+- **Battery management:** Every move consumes energy. A robot preserves enough
+  charge to reach a station, pauses its job, charges, and resumes the same route.
+- **Fleet reliability:** Failed robots release their jobs for reassignment.
+  SQLite restores fleet state after a restart, while WebSockets stream live
+  updates to the dashboard.
+- **Delivery:** The application is tested in GitHub Actions, packaged with
+  Docker, and deployed on AWS EC2.
+
+### Scheduler optimization
+
+The benchmark gives the same six jobs, robots, and starting batteries to two
+schedulers. The baseline chooses the nearest robot. The optimized scheduler also
+estimates charging delay and short-term route congestion before assigning work.
+In this fixed scenario it produced 2.1% higher throughput and 1.9% faster average
+delivery. These results are scenario-specific rather than general performance
+claims.
+
+![Scheduler benchmark](docs/scheduler-benchmark.png)
+
+The event log makes traffic decisions observable, including yielding,
+right-of-way, job assignment, and replanning.
+
+![Traffic event log](docs/traffic-event-log.png)
+
 ## Author and contact
 
 Mark — [GitHub profile](https://github.com/morklv)
