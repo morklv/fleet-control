@@ -2,9 +2,13 @@
 
 [Live demo](http://52.25.23.81:8080) · [Architecture notes](ARCHITECTURE.md)
 
+## Demo video
+
+[▶ Watch the Fleet Control demo](docs/fleet-control-demo.mov)
+
 [![Watch the Fleet Control demo](docs/fleet-control-dashboard.png)](docs/fleet-control-demo.mov)
 
-*Click the image to watch the main demo.*
+*The image also opens the main demo.*
 
 Fleet Control is a small multi-robot warehouse simulation built to explore fleet
 scheduling, path planning, traffic coordination, and battery management. It is
