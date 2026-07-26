@@ -1,110 +1,64 @@
-
-
 # Fleet Control
 
-## Live Demo
+[Live demo](http://52.25.23.81:8080) · [Architecture notes](ARCHITECTURE.md)
 
-[Open Fleet Control](http://52.25.23.81:8080)
+[![Watch the Fleet Control demo](docs/fleet-control-dashboard.png)](docs/fleet-control-demo.mov)
 
+*Click the image to watch the main demo.*
 
-![Fleet Control dashboard](docs/fleet-control-dashboard.png)
+Fleet Control is a small multi-robot warehouse simulation built to explore fleet
+scheduling, path planning, traffic coordination, and battery management. It is
+an educational simulator, not a production robot controller or ROS system.
 
-Fleet Control is a deterministic multi-robot warehouse simulator. It demonstrates
-the core engineering problems behind autonomous fulfillment: scheduling, A* path
-planning, collision avoidance, state coordination, failure recovery, and live
-operational telemetry. Robots also manage finite batteries and interrupt work
-to recharge safely.
+## What it demonstrates
 
-Robots can also run dedicated recurring missions. Traffic coordination combines
-priority-based right-of-way, waiting-time fairness, cell and edge reservations,
-and dynamic A* replanning when congestion persists.
+- A* path planning around warehouse obstacles
+- Automatic and robot-specific recurring job assignment
+- Collision avoidance with cell/edge reservations, priority, and yielding
+- Battery-aware routing to charging stations, followed by job resumption
+- Robot failure, job requeue, and recovery
+- A reproducible comparison of nearest-robot and traffic-and-energy-aware scheduling
+- Live REST/WebSocket state updates with 2D and 3D visualization
+- SQLite persistence, automated tests, Docker, GitHub Actions, and AWS EC2 deployment
 
-The system is intentionally small enough to explain end to end. It is a
-simulation—not a production robot controller or a ROS deployment.
+## Results and observability
 
-## Demonstration scenario
-
-1. Create a fulfillment job.
-2. The scheduler selects the nearest eligible robot.
-3. A* calculates a shortest traversable route to pickup.
-4. The robot moves one cell per simulation tick.
-5. Cell reservations prevent collisions and head-on swaps.
-6. Energy planning preserves enough charge to reach a charging station.
-7. A low-energy robot charges to 100% and resumes its interrupted job.
-8. Fail the active robot from Mission Control.
-9. Its route is discarded and its job returns to the queue.
-10. Another eligible robot plans a new route and completes delivery.
-
-Pause the clock and use **STEP +1** to inspect each scheduling and state
-transition deterministically. The dashboard restores authoritative run state on
-reload and reconnects automatically if the live link is interrupted.
-
-Use **Run demo** for an automatic portfolio scenario with three prioritized
-jobs, robot assignment, a simulated fault, job reassignment, robot recovery,
-and completed deliveries. Switch between the operational 2D map and interactive
-3D digital-twin view at any time.
-
-Each grid move consumes one battery unit. Before continuing a route leg, the
-coordinator calculates the remaining route plus the shortest obstacle-aware
-path from its destination to a charger. The dashboard exposes charger locations,
-battery percentage, move budget, charging count, and fleet-average charge.
-
-The built-in benchmark runs the same deterministic six-job workload with
-nearest-robot and traffic-and-energy-aware assignment. It reports throughput,
-average delivery time, waiting events, and charging stops, so performance claims
-come from the simulator rather than hard-coded values.
+| Scheduler comparison | Traffic decisions |
+|---|---|
+| ![Scheduler benchmark](docs/scheduler-benchmark.png) | ![Traffic event log](docs/traffic-event-log.png) |
 
 ## Architecture
 
 ```text
-React / TypeScript dashboard
-        │ REST commands + WebSocket telemetry
+React + TypeScript
+        │ REST / WebSocket
         ▼
-FastAPI adapter
+Python + FastAPI
         │
 FleetCoordinator
-  ├── priority + nearest-robot scheduler
-  ├── A* route planner
-  ├── collision reservation policy
-  └── failure / requeue state machine
+  ├── scheduling
+  ├── A* routing
+  ├── traffic safety
+  └── energy management
         │
-Domain models: WarehouseMap, Robot, Job, Position
+      SQLite
 ```
 
-The domain and application layers do not import FastAPI or React. That boundary
-keeps the important robotics behavior deterministic and testable.
-
-## Technology
-
-- Python 3.13, FastAPI, Pydantic
-- A* search with a Manhattan-distance heuristic
-- React 19, TypeScript, Vite
-- REST commands and WebSocket telemetry
-- SQLite persistence
-- pytest, Vitest, React Testing Library, GitHub Actions
-- Three.js and React Three Fiber
-- Docker and Docker Compose
+The coordinator owns the simulation state. The frontend visualizes that state
+and sends operator commands; it does not control robot behavior directly.
 
 ## Run locally
 
-Create the backend environment:
+Backend:
 
 ```bash
-cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt
-cd ..
+pip install -r backend/requirements-dev.txt
+python -m uvicorn fleet_control.api.app:app --app-dir backend --reload --port 8100
 ```
 
-Terminal one:
-
-```bash
-python3 -m uvicorn fleet_control.api.app:app \
-  --app-dir backend --reload --port 8100
-```
-
-Terminal two:
+Frontend, in a second terminal:
 
 ```bash
 cd frontend
@@ -112,39 +66,22 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
-
-Or run the production containers:
+Open `http://127.0.0.1:5173`, or run the containerized version with:
 
 ```bash
 docker compose up --build
 ```
 
-Open `http://127.0.0.1:8080`.
-
 ## Verification
 
 ```bash
-python3 -m pytest backend/tests -q
+python -m pytest backend/tests -q
 cd frontend && npm test && npm run build
 ```
 
-The backend suite verifies domain invariants, shortest-path behavior, obstacle
-routing, unreachable routes, job assignment, cancellation, collision safety,
-delivery, charging and job resumption, persistence, the automated demo, failure
-requeue, robot recovery, and
-API validation. Frontend tests cover authoritative rendering, dispatch,
-cancellation, and demo controls.
+## Interview discussion
 
-## Engineering tradeoffs
-
-- The simulation advances on a fixed clock for reproducible behavior.
-- Robots use conservative cell reservations: a unit never enters a cell occupied
-  at the start of the current tick. This reduces throughput slightly but makes
-  collisions and head-on swaps impossible.
-- A* plans around static shelves. Dynamic congestion is handled at execution time
-  through yielding rather than full multi-agent replanning.
-- State transitions are explicit and validated, preventing impossible lifecycle
-  jumps such as `idle → unloading`.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the component-level model.
+The main design choices I would discuss are why A* is appropriate for the grid,
+how the robot state machine prevents invalid transitions, how reservation-based
+traffic handling avoids collisions, how charging decisions preserve an energy
+reserve, and how the deterministic benchmark compares schedulers fairly.
