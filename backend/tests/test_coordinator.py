@@ -3,6 +3,7 @@ from fleet_control.domain import (
     Job,
     JobState,
     Position,
+    RecurringMission,
     Robot,
     RobotState,
     WarehouseMap,
@@ -103,3 +104,153 @@ def test_failed_robot_can_recover_to_idle() -> None:
     coordinator.tick()
 
     assert robot.state is RobotState.IDLE
+
+
+def test_idle_robot_clears_occupied_delivery_station() -> None:
+    delivering = Robot("R-1", Position(0, 0))
+    blocker = Robot("R-2", Position(2, 0))
+    coordinator = FleetCoordinator(
+        WarehouseMap(width=3, height=2),
+        [delivering, blocker],
+    )
+    job = Job("J-1", Position(1, 0), Position(2, 0))
+    coordinator.submit_job(job)
+
+    run_until(coordinator, lambda: job.state is JobState.COMPLETED)
+
+    assert delivering.position == Position(2, 0)
+    assert blocker.position == Position(2, 1)
+    assert any(event.kind == "robot_repositioned" for event in coordinator.events)
+
+
+def test_assigned_job_can_be_cancelled_and_releases_robot() -> None:
+    robot = Robot("R-1", Position(0, 0))
+    coordinator = FleetCoordinator(
+        WarehouseMap(width=4, height=2),
+        [robot],
+    )
+    job = Job("J-1", Position(1, 0), Position(3, 0))
+    coordinator.submit_job(job)
+    coordinator.tick()
+
+    coordinator.cancel_job(job.id)
+
+    assert job.state is JobState.CANCELLED
+    assert robot.state is RobotState.IDLE
+    assert robot.current_job_id is None
+    assert robot.path == []
+
+
+def test_recurring_mission_repeats_for_specific_robot() -> None:
+    first = Robot("R-1", Position(0, 0))
+    second = Robot("R-2", Position(4, 1))
+    coordinator = FleetCoordinator(
+        WarehouseMap(width=5, height=2),
+        [first, second],
+    )
+    mission = RecurringMission(
+        "M-1",
+        robot_id=second.id,
+        pickup=Position(3, 1),
+        dropoff=Position(1, 1),
+        priority=7,
+    )
+    coordinator.add_mission(mission)
+
+    run_until(coordinator, lambda: mission.cycles_completed >= 2)
+
+    mission_jobs = [
+        job for job in coordinator.jobs.values() if job.mission_id == mission.id
+    ]
+    assert len(mission_jobs) == 2
+    assert all(job.assigned_robot_id == second.id for job in mission_jobs)
+    assert first.state is RobotState.IDLE
+
+
+def test_job_priority_controls_right_of_way() -> None:
+    high_priority = Robot("R-1", Position(0, 1))
+    low_priority = Robot("R-2", Position(2, 1))
+    coordinator = FleetCoordinator(
+        WarehouseMap(width=3, height=3),
+        [high_priority, low_priority],
+    )
+    coordinator.submit_job(
+        Job("J-HIGH", Position(1, 1), Position(1, 0), priority=9)
+    )
+    coordinator.submit_job(
+        Job("J-LOW", Position(1, 1), Position(1, 2), priority=1)
+    )
+
+    coordinator.tick()
+    coordinator.tick()
+
+    assert high_priority.position == Position(1, 1)
+    assert low_priority.position == Position(2, 1)
+    assert low_priority.wait_ticks == 1
+
+
+def test_head_on_robot_pulls_aside_for_higher_priority_robot() -> None:
+    high_priority = Robot("R-1", Position(1, 1))
+    low_priority = Robot("R-2", Position(2, 1))
+    coordinator = FleetCoordinator(
+        WarehouseMap(width=4, height=3),
+        [high_priority, low_priority],
+    )
+    coordinator.submit_job(
+        Job(
+            "J-HIGH",
+            Position(2, 1),
+            Position(3, 1),
+            priority=9,
+            required_robot_id=high_priority.id,
+        )
+    )
+    coordinator.submit_job(
+        Job(
+            "J-LOW",
+            Position(1, 1),
+            Position(0, 1),
+            priority=1,
+            required_robot_id=low_priority.id,
+        )
+    )
+
+    coordinator.tick()
+    coordinator.tick()
+
+    assert high_priority.position == Position(2, 1)
+    assert low_priority.position in {Position(2, 0), Position(2, 2)}
+    assert any(event.kind == "robot_yielded" for event in coordinator.events)
+
+
+def test_robot_charges_and_resumes_delivery_before_battery_is_unsafe() -> None:
+    robot = Robot(
+        "R-1",
+        Position(2, 0),
+        battery_capacity=20,
+        battery_level=8,
+        charge_rate=10,
+    )
+    coordinator = FleetCoordinator(
+        WarehouseMap(width=8, height=2),
+        [robot],
+        charging_stations=(Position(0, 0),),
+    )
+    job = Job(
+        "J-ENERGY",
+        pickup=Position(3, 0),
+        dropoff=Position(7, 0),
+        required_robot_id=robot.id,
+    )
+    coordinator.submit_job(job)
+
+    run_until(
+        coordinator,
+        lambda: job.state is JobState.COMPLETED,
+        maximum_ticks=80,
+    )
+
+    assert robot.position == job.dropoff
+    assert robot.battery_level > 0
+    assert any(event.kind == "charging_required" for event in coordinator.events)
+    assert any(event.kind == "charging_completed" for event in coordinator.events)

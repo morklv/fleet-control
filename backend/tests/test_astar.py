@@ -59,3 +59,17 @@ def test_astar_raises_when_destination_is_unreachable() -> None:
 
     with pytest.raises(PathNotFound):
         find_path(warehouse, Position(0, 0), Position(2, 2))
+
+
+def test_astar_can_avoid_temporary_traffic_cells() -> None:
+    warehouse = WarehouseMap(width=3, height=3)
+
+    path = find_path(
+        warehouse,
+        Position(0, 1),
+        Position(2, 1),
+        blocked=frozenset({Position(1, 1)}),
+    )
+
+    assert Position(1, 1) not in path
+    assert len(path) == 5

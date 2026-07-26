@@ -22,4 +22,8 @@ def build_demo_coordinator() -> FleetCoordinator:
         Robot("R-03", Position(1, 10)),
         Robot("R-04", Position(16, 10)),
     ]
-    return FleetCoordinator(warehouse, robots)
+    return FleetCoordinator(
+        warehouse,
+        robots,
+        charging_stations=(Position(0, 6), Position(17, 6)),
+    )

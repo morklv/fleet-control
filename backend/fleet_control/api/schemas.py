@@ -10,3 +10,10 @@ class JobCreate(BaseModel):
     pickup: PositionInput
     dropoff: PositionInput
     priority: int = Field(default=0, ge=0, le=10)
+
+
+class MissionCreate(BaseModel):
+    robot_id: str
+    pickup: PositionInput
+    dropoff: PositionInput
+    priority: int = Field(default=5, ge=0, le=10)

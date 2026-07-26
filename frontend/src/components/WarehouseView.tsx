@@ -1,4 +1,10 @@
+import { lazy, Suspense, useState } from "react";
+
 import type { FleetState } from "../types";
+
+const Warehouse3D = lazy(() =>
+  import("./Warehouse3D").then((module) => ({ default: module.Warehouse3D })),
+);
 
 type Props = {
   state: FleetState;
@@ -15,6 +21,7 @@ export function WarehouseView({
   selectedRobot,
   onSelectRobot,
 }: Props) {
+  const [view, setView] = useState<"2d" | "3d">("2d");
   const obstacles = new Set(
     state.warehouse.obstacles.map(({ x, y }) => key(x, y)),
   );
@@ -28,13 +35,41 @@ export function WarehouseView({
     <section className="warehouse-panel">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">LIVE SPATIAL MODEL</span>
-          <h2>Fulfillment floor</h2>
+          <span className="section-kicker">LIVE POSITION DATA</span>
+          <h2>Warehouse map</h2>
         </div>
-        <span className="coordinates">ZONE 04 / {state.tick.toString().padStart(5, "0")}</span>
+        <div className="map-actions">
+          <div className="view-toggle" aria-label="Warehouse view">
+            <button
+              className={view === "2d" ? "active" : ""}
+              aria-pressed={view === "2d"}
+              onClick={() => setView("2d")}
+            >
+              2D
+            </button>
+            <button
+              className={view === "3d" ? "active" : ""}
+              aria-pressed={view === "3d"}
+              onClick={() => setView("3d")}
+            >
+              3D
+            </button>
+          </div>
+          <span className="coordinates">
+            Tick {state.tick.toString().padStart(5, "0")}
+          </span>
+        </div>
       </div>
 
-      <div
+      {view === "3d" ? (
+        <Suspense fallback={<div className="warehouse-3d-loading">Loading 3D view…</div>}>
+          <Warehouse3D
+            state={state}
+            selectedRobot={selectedRobot}
+            onSelectRobot={onSelectRobot}
+          />
+        </Suspense>
+      ) : <div
         className="warehouse"
         style={{
           "--columns": state.warehouse.width,
@@ -82,11 +117,30 @@ export function WarehouseView({
             />,
           ])}
 
+        {state.warehouse.charging_stations.map((station) => (
+          <div
+            className="charging-station"
+            key={`charger-${station.x}-${station.y}`}
+            title={`Charging station ${station.x}.${station.y}`}
+            style={{
+              "--x": station.x,
+              "--y": station.y,
+            } as React.CSSProperties}
+          >
+            ⚡
+          </div>
+        ))}
+
         {state.robots.map((robot) => (
           <button
             className={[
               "robot",
               robot.state === "failed" ? "failed" : "",
+              (robot.state === "moving_to_charger" ||
+                (robot.moves_to_charger !== null &&
+                  robot.battery_level <= robot.moves_to_charger + 2))
+                ? "critical-battery"
+                : "",
               selectedRobot === robot.id ? "selected" : "",
             ].join(" ")}
             key={robot.id}
@@ -101,13 +155,14 @@ export function WarehouseView({
             <span className="robot-id">{robot.id.replace("R-", "")}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
       <div className="map-legend">
-        <span><i className="legend-dot robot-dot" /> autonomous unit</span>
-        <span><i className="legend-dot pickup-dot" /> pickup</span>
-        <span><i className="legend-dot dropoff-dot" /> dropoff</span>
-        <span><i className="legend-line" /> selected route</span>
+        <span><i className="legend-dot robot-dot" /> Robot</span>
+        <span><i className="legend-dot pickup-dot" /> Pickup</span>
+        <span><i className="legend-dot dropoff-dot" /> Drop-off</span>
+        <span><i className="legend-dot charger-dot" /> Charger</span>
+        <span><i className="legend-line" /> Selected route</span>
       </div>
     </section>
   );

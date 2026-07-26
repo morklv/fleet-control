@@ -1,6 +1,10 @@
 services:
   backend:
     build: ./backend
+    environment:
+      FLEET_CONTROL_DB: /data/fleet-control.db
+    volumes:
+      - fleet-data:/data
     ports:
       - "8100:8100"
 
@@ -10,3 +14,6 @@ services:
       - backend
     ports:
       - "8080:80"
+
+volumes:
+  fleet-data:

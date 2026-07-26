@@ -1,16 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { command, createJob } from "../api";
-import type { FleetState, Position } from "../types";
-
-const stations: Array<{ label: string; position: Position }> = [
-  { label: "Inbound A / 02.01", position: { x: 2, y: 1 } },
-  { label: "Inbound B / 15.01", position: { x: 15, y: 1 } },
-  { label: "Storage W / 02.06", position: { x: 2, y: 6 } },
-  { label: "Storage E / 15.06", position: { x: 15, y: 6 } },
-  { label: "Dispatch A / 02.10", position: { x: 2, y: 10 } },
-  { label: "Dispatch B / 15.10", position: { x: 15, y: 10 } },
-];
+import { mapLocations } from "../stations";
+import type { FleetState } from "../types";
 
 type Props = {
   state: FleetState;
@@ -22,26 +14,44 @@ export function ControlPanel({ state, selectedRobot, onError }: Props) {
   const [pickup, setPickup] = useState(0);
   const [dropoff, setDropoff] = useState(5);
   const [priority, setPriority] = useState(5);
+  const [pending, setPending] = useState(false);
+  const locations = useMemo(() => mapLocations(state.warehouse), [state.warehouse]);
   const robot = state.robots.find((item) => item.id === selectedRobot);
+  const job = state.jobs.find((item) => item.id === robot?.current_job_id);
+  const destination = !job
+    ? "None"
+    : robot?.state === "moving_to_pickup"
+      ? `${job.pickup.x}.${job.pickup.y} pickup`
+      : `${job.dropoff.x}.${job.dropoff.y} drop-off`;
 
   async function dispatch() {
+    if (pickup === dropoff) {
+      onError("Pickup and drop-off must be different.");
+      return;
+    }
+    setPending(true);
     try {
       await createJob(
-        stations[pickup].position,
-        stations[dropoff].position,
+        locations[pickup].position,
+        locations[dropoff].position,
         priority,
       );
     } catch (error) {
       onError(error instanceof Error ? error.message : "Dispatch failed");
+    } finally {
+      setPending(false);
     }
   }
 
   async function robotCommand(action: "fail" | "recover") {
     if (!robot) return;
+    setPending(true);
     try {
       await command(`/api/robots/${robot.id}/${action}`);
-    } catch {
-      onError(`Unable to ${action} ${robot.id}`);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : `Unable to ${action} ${robot.id}`);
+    } finally {
+      setPending(false);
     }
   }
 
@@ -49,31 +59,33 @@ export function ControlPanel({ state, selectedRobot, onError }: Props) {
     <aside className="control-panel">
       <div className="panel-heading compact">
         <div>
-          <span className="eyebrow">MISSION CONTROL</span>
-          <h2>Dispatch</h2>
+          <span className="section-kicker">MISSION PLANNING</span>
+          <h2>New job</h2>
         </div>
-        <span className="status-chip">AUTO</span>
       </div>
 
       <div className="control-block">
+        <p className="panel-copy">
+          Choose where the closest available robot should collect and deliver a load.
+        </p>
         <label>
-          Pickup node
+          Pickup location
           <select value={pickup} onChange={(event) => setPickup(+event.target.value)}>
-            {stations.map((station, index) => (
-              <option value={index} key={station.label}>{station.label}</option>
+            {locations.map((location, index) => (
+              <option value={index} key={location.label}>{location.label}</option>
             ))}
           </select>
         </label>
         <label>
-          Delivery node
+          Drop-off location
           <select value={dropoff} onChange={(event) => setDropoff(+event.target.value)}>
-            {stations.map((station, index) => (
-              <option value={index} key={station.label}>{station.label}</option>
+            {locations.map((location, index) => (
+              <option value={index} key={location.label}>{location.label}</option>
             ))}
           </select>
         </label>
         <label>
-          Priority / {priority.toString().padStart(2, "0")}
+          Priority <output>{priority}</output>
           <input
             type="range"
             min="0"
@@ -82,13 +94,13 @@ export function ControlPanel({ state, selectedRobot, onError }: Props) {
             onChange={(event) => setPriority(+event.target.value)}
           />
         </label>
-        <button className="primary-action" onClick={dispatch}>
-          CREATE FULFILLMENT JOB <span>↗</span>
+        <button className="primary-action" disabled={pending} onClick={dispatch}>
+          {pending ? "Sending…" : "Dispatch job"} <span>→</span>
         </button>
       </div>
 
       <div className="selected-unit">
-        <div className="section-label">SELECTED UNIT</div>
+        <div className="section-label">ROBOT DETAILS</div>
         {robot ? (
           <>
             <div className="unit-heading">
@@ -96,23 +108,35 @@ export function ControlPanel({ state, selectedRobot, onError }: Props) {
               <span className={`unit-state ${robot.state}`}>{robot.state.replaceAll("_", " ")}</span>
             </div>
             <dl>
-              <div><dt>Position</dt><dd>{robot.position.x}.{robot.position.y}</dd></div>
-              <div><dt>Active job</dt><dd>{robot.current_job_id ?? "—"}</dd></div>
-              <div><dt>Route nodes</dt><dd>{robot.path.length}</dd></div>
-              <div><dt>Wait ticks</dt><dd>{robot.wait_ticks}</dd></div>
+              <div><dt>Grid position</dt><dd>{robot.position.x}.{robot.position.y}</dd></div>
+              <div><dt>Current job</dt><dd>{robot.current_job_id ?? "None"}</dd></div>
+              <div><dt>Destination</dt><dd>{destination}</dd></div>
+              <div><dt>Steps remaining</dt><dd>{robot.path.length}</dd></div>
+              <div><dt>Job elapsed</dt><dd>{job ? `${job.elapsed_ticks} ticks` : "—"}</dd></div>
+              <div><dt>Ticks waiting</dt><dd>{robot.wait_ticks}</dd></div>
+              <div>
+                <dt>Battery</dt>
+                <dd className={robot.battery_percent <= 25 ? "battery-low" : ""}>
+                  {robot.battery_percent}% · {robot.battery_level} moves
+                </dd>
+              </div>
+              <div>
+                <dt>Nearest charger</dt>
+                <dd>{robot.moves_to_charger ?? "—"} moves</dd>
+              </div>
             </dl>
             {robot.state === "failed" ? (
-              <button className="secondary-action" onClick={() => robotCommand("recover")}>
-                RECOVER UNIT
+              <button disabled={pending} className="secondary-action" onClick={() => robotCommand("recover")}>
+                Return robot to service
               </button>
             ) : (
-              <button className="danger-action" onClick={() => robotCommand("fail")}>
-                SIMULATE FAILURE
+              <button disabled={pending} className="danger-action" onClick={() => robotCommand("fail")}>
+                Simulate robot fault
               </button>
             )}
           </>
         ) : (
-          <p className="empty-copy">Select a robot on the floor to inspect or disrupt it.</p>
+          <p className="empty-state">Select a robot on the map to inspect it.</p>
         )}
       </div>
     </aside>

@@ -32,6 +32,8 @@ def find_path(
     warehouse: WarehouseMap,
     start: Position,
     goal: Position,
+    *,
+    blocked: frozenset[Position] = frozenset(),
 ) -> list[Position]:
     """Return the shortest traversable path, including start and goal."""
     if not warehouse.is_traversable(start) or not warehouse.is_traversable(goal):
@@ -53,6 +55,8 @@ def find_path(
             return _reconstruct_path(came_from, current)
 
         for neighbor in warehouse.neighbors(current):
+            if neighbor in blocked and neighbor != goal:
+                continue
             candidate_cost = cost_to_reach[current] + 1
             if candidate_cost >= cost_to_reach.get(neighbor, candidate_cost + 1):
                 continue

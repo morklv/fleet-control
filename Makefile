@@ -2,6 +2,7 @@
 
 test:
 	python3 -m pytest backend/tests -q
+	cd frontend && npm test
 	cd frontend && npm run build
 
 backend:
