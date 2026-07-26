@@ -1,4 +1,11 @@
+
+
 # Fleet Control
+
+## Live Demo
+
+[Open Fleet Control](http://52.25.23.81:8080)
+
 
 ![Fleet Control dashboard](docs/fleet-control-dashboard.png)
 
