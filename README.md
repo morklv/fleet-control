@@ -1,91 +1,91 @@
 # Fleet Control
 
-[Live demo](http://52.25.23.81:8080) · [Architecture notes](ARCHITECTURE.md)
+A multi-robot warehouse simulation built with Python, FastAPI, React, and
+TypeScript.
 
-## Demo video
+## Author and contact
 
-[▶ Watch the Fleet Control demo](docs/fleet-control-demo.mov)
+Mark — [GitHub profile](https://github.com/morklv)
 
-[![Watch the Fleet Control demo](docs/fleet-control-dashboard.png)](docs/fleet-control-demo.mov)
+## Bug tracker
 
-*The image also opens the main demo.*
+Report problems through
+[GitHub Issues](https://github.com/morklv/fleet-control/issues).
 
-Fleet Control is a small multi-robot warehouse simulation built to explore fleet
-scheduling, path planning, traffic coordination, and battery management. It is
-an educational simulator, not a production robot controller or ROS system.
+## Known issues
 
-## What it demonstrates
+- This is an educational grid simulation, not a production robot controller or
+  ROS system.
+- Traffic is coordinated through discrete simulation ticks rather than
+  continuous physical motion.
+- The 3D frontend produces a large JavaScript bundle.
+- The live AWS demo uses HTTP rather than HTTPS.
 
-- A* path planning around warehouse obstacles
-- Automatic and robot-specific recurring job assignment
-- Collision avoidance with cell/edge reservations, priority, and yielding
-- Battery-aware routing to charging stations, followed by job resumption
-- Robot failure, job requeue, and recovery
-- A reproducible comparison of nearest-robot and traffic-and-energy-aware scheduling
-- Live REST/WebSocket state updates with 2D and 3D visualization
-- SQLite persistence, automated tests, Docker, GitHub Actions, and AWS EC2 deployment
+## Build
 
-## Results and observability
-
-| Scheduler comparison | Traffic decisions |
-|---|---|
-| ![Scheduler benchmark](docs/scheduler-benchmark.png) | ![Traffic event log](docs/traffic-event-log.png) |
-
-## Architecture
-
-```text
-React + TypeScript
-        │ REST / WebSocket
-        ▼
-Python + FastAPI
-        │
-FleetCoordinator
-  ├── scheduling
-  ├── A* routing
-  ├── traffic safety
-  └── energy management
-        │
-      SQLite
-```
-
-The coordinator owns the simulation state. The frontend visualizes that state
-and sends operator commands; it does not control robot behavior directly.
-
-## Run locally
-
-Backend:
+Backend environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements-dev.txt
-python -m uvicorn fleet_control.api.app:app --app-dir backend --reload --port 8100
 ```
 
-Frontend, in a second terminal:
+Frontend dependencies and production build:
 
 ```bash
 cd frontend
 npm install
+npm run build
+```
+
+The complete containerized application can also be built with:
+
+```bash
+docker compose build
+```
+
+## Run
+
+Start the backend:
+
+```bash
+source .venv/bin/activate
+python -m uvicorn fleet_control.api.app:app --app-dir backend --reload --port 8100
+```
+
+Start the frontend in a second terminal:
+
+```bash
+cd frontend
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`, or run the containerized version with:
+Open `http://127.0.0.1:5173`.
+
+Alternatively:
 
 ```bash
-docker compose up --build
+docker compose up
 ```
 
-## Verification
+Then open `http://127.0.0.1:8080`.
+
+Live deployment: [Fleet Control on AWS](http://52.25.23.81:8080)
+
+## Test
+
+Backend:
 
 ```bash
+source .venv/bin/activate
 python -m pytest backend/tests -q
-cd frontend && npm test && npm run build
 ```
 
-## Interview discussion
+Frontend:
 
-The main design choices I would discuss are why A* is appropriate for the grid,
-how the robot state machine prevents invalid transitions, how reservation-based
-traffic handling avoids collisions, how charging decisions preserve an energy
-reserve, and how the deterministic benchmark compares schedulers fairly.
+```bash
+cd frontend
+npm test
+npm run build
+```
